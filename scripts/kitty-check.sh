@@ -9,7 +9,9 @@
 #   - the app image registers an MCP tool that uploads to or downloads from an arbitrary URL
 #     (firmware upgrade, asset download, screen snapshot, image preview);
 #   - the build's sdkconfig is not the locked-down, en-US, ST7789 240x280 lafvin-s3-169-cam config;
-#   - the device key is empty.
+#   - the device key is empty;
+#   - a kitty face is missing from the source collection or from generated_assets.bin;
+#   - build-ptt enables a wake word, or a wake build lacks English MultiNet7 (config and assets).
 # It never prints the device key. With KITTY_REQUIRE_REAL_KEY=1 (Task 30, before flashing) it also
 # fails on a placeholder key; without it, a placeholder key is reported as a NOTE.
 #
@@ -108,6 +110,30 @@ grep -qE '^CONFIG_OTA_URL="http://192\.168\.0\.11:[0-9]+/xiaozhi/ota/"$' "$cfg" 
 if [ -f "$dir/config/sdkconfig.h" ]; then
     grep -qx '#define CONFIG_KITTY_LOCKDOWN 1' "$dir/config/sdkconfig.h" ||
         fail "$dir/config/sdkconfig.h was not compiled with CONFIG_KITTY_LOCKDOWN"
+fi
+
+# Kitty face (Task 29): every face is in the source collection and packed into the assets image.
+assets="$dir/generated_assets.bin"
+[ -f "$assets" ] || fail "$assets not found"
+faces_src="$(cd "$(dirname "$0")/.." && pwd)/main/boards/lafvin-s3-169-cam/kitty-gif"
+for face in neutral happy laughing funny sad angry crying loving embarrassed surprised shocked \
+    thinking winking cool relaxed delicious kissy confident sleepy silly confused listening; do
+    [ -f "$faces_src/$face.gif" ] || fail "kitty face $face.gif is missing from $faces_src"
+    LC_ALL=C grep -qaF "$face.gif" "$assets" || fail "$assets lacks the kitty face $face.gif"
+done
+
+# Push to talk vs wake word (D10, R9). build-ptt is the folder Task 30 flashes: no wake word.
+if grep -qx 'CONFIG_USE_CUSTOM_WAKE_WORD=y' "$cfg"; then
+    [ "$(basename "$dir")" != build-ptt ] ||
+        fail "build-ptt must be push to talk, but $cfg enables the custom wake word"
+    grep -qx 'CONFIG_CUSTOM_WAKE_WORD_LANGUAGE="en"' "$cfg" ||
+        fail "$cfg: CUSTOM_WAKE_WORD_LANGUAGE is not \"en\""
+    grep -qx 'CONFIG_SR_MN_EN_MULTINET7_QUANT=y' "$cfg" ||
+        fail "$cfg lacks CONFIG_SR_MN_EN_MULTINET7_QUANT=y"
+    LC_ALL=C grep -qaF mn7_en "$assets" || fail "$assets lacks the English MultiNet model mn7_en"
+elif [ "$(basename "$dir")" = build-ptt ]; then
+    grep -qx 'CONFIG_WAKE_WORD_DISABLED=y' "$cfg" ||
+        fail "build-ptt must be push to talk: $cfg lacks CONFIG_WAKE_WORD_DISABLED=y"
 fi
 
 # Device key: checked by shape only, never echoed.

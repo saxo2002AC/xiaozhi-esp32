@@ -7,7 +7,10 @@
 #include "config.h"
 #include "led/single_led.h"
 #include "esp32_camera.h"
+#include "assets/lang_config.h"
 
+#include <atomic>
+#include <cstring>
 #include <esp_log.h>
 #include <esp_lcd_panel_vendor.h>
 #include <esp_lcd_panel_io.h>
@@ -19,6 +22,38 @@
 // dropped because GPIO14 is the LCD chip select here.
 
 #define TAG "LafvinS3169CamBoard"
+
+// Kitty face moods the core does not set, kept in the board so core code stays board-agnostic:
+// "listening" while BOOT is held (the core asks for "neutral" under the Listening status), and
+// "thinking" once the child's words are recognized (the stt "user" line) until the reply's
+// emotion arrives. Both faces are in kitty-gif.
+class KittyLcdDisplay : public SpiLcdDisplay {
+public:
+    using SpiLcdDisplay::SpiLcdDisplay;
+
+    void SetStatus(const char* status) override {
+        listening_ = status != nullptr && strcmp(status, Lang::Strings::LISTENING) == 0;
+        SpiLcdDisplay::SetStatus(status);
+    }
+
+    bool SetEmotion(const char* emotion) override {
+        if (listening_ && emotion != nullptr && strcmp(emotion, "neutral") == 0) {
+            emotion = "listening";
+        }
+        return SpiLcdDisplay::SetEmotion(emotion);
+    }
+
+    void SetChatMessage(const char* role, const char* content) override {
+        SpiLcdDisplay::SetChatMessage(role, content);
+        if (role != nullptr && strcmp(role, "user") == 0 && content != nullptr &&
+            content[0] != '\0') {
+            SetEmotion("thinking");
+        }
+    }
+
+private:
+    std::atomic<bool> listening_{false};
+};
 
 class LafvinS3169CamBoard : public WifiBoard {
 private:
@@ -63,9 +98,9 @@ private:
         esp_lcd_panel_invert_color(panel, DISPLAY_INVERT_COLOR);
         esp_lcd_panel_swap_xy(panel, DISPLAY_SWAP_XY);
         esp_lcd_panel_mirror(panel, DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y);
-        display_ = new SpiLcdDisplay(panel_io, panel, DISPLAY_WIDTH, DISPLAY_HEIGHT,
-                                     DISPLAY_OFFSET_X, DISPLAY_OFFSET_Y, DISPLAY_MIRROR_X,
-                                     DISPLAY_MIRROR_Y, DISPLAY_SWAP_XY);
+        display_ = new KittyLcdDisplay(panel_io, panel, DISPLAY_WIDTH, DISPLAY_HEIGHT,
+                                       DISPLAY_OFFSET_X, DISPLAY_OFFSET_Y, DISPLAY_MIRROR_X,
+                                       DISPLAY_MIRROR_Y, DISPLAY_SWAP_XY);
     }
 
     void InitializeCamera() {
@@ -98,14 +133,27 @@ private:
     }
 
     void InitializeButtons() {
-        // BOOT: push to talk. Before Wi-Fi is up it opens Wi-Fi config mode.
+        // BOOT is hold to talk: press to listen, release to send. This is the compiled default and
+        // no MCP tool can change it (D10). A click during start-up opens Wi-Fi config instead.
+        boot_button_.OnPressDown([this]() {
+            auto& app = Application::GetInstance();
+            if (app.GetDeviceState() == kDeviceStateStarting) {
+                return;
+            }
+            app.StartListening();
+        });
+        boot_button_.OnPressUp([this]() {
+            auto& app = Application::GetInstance();
+            if (app.GetDeviceState() == kDeviceStateStarting) {
+                return;
+            }
+            app.StopListening();
+        });
         boot_button_.OnClick([this]() {
             auto& app = Application::GetInstance();
             if (app.GetDeviceState() == kDeviceStateStarting) {
                 EnterWifiConfigMode();
-                return;
             }
-            app.ToggleChatState();
         });
     }
 

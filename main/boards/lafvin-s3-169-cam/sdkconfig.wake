@@ -1,0 +1,11 @@
+# Optional "Hey Kitty" wake word for the lafvin-s3-169-cam-wake variant (off until it passes the
+# living-room test). scripts/kitty-build.sh applies this fragment through KITTY_SDKCONFIG_EXTRA
+# together with `--wake-word custom`. It lives here, not in config.json, because upstream keeps
+# language and wake-word options out of board config.json (scripts/tests/test_build.py).
+CONFIG_USE_CUSTOM_WAKE_WORD=y
+CONFIG_CUSTOM_WAKE_WORD="hey kitty"
+CONFIG_CUSTOM_WAKE_WORD_DISPLAY="Hey Kitty"
+CONFIG_CUSTOM_WAKE_WORD_LANGUAGE="en"
+CONFIG_CUSTOM_WAKE_WORD_THRESHOLD=20
+# English MultiNet7 (esp-sr 2.4.7 Kconfig.projbuild, choice ENGLISH_SR_MN_MODEL_SEL).
+CONFIG_SR_MN_EN_MULTINET7_QUANT=y

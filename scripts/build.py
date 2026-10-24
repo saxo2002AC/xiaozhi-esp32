@@ -353,6 +353,14 @@ def _wake_word_sdkconfig_options(
         options.append("CONFIG_WAKE_WORD_DISABLED=y")
         return normalized, options, ["CONFIG_WAKE_WORD_DISABLED"]
 
+    if normalized == "custom":
+        # Mission Kitty: MultiNet custom wake word. The phrase, language and CONFIG_SR_MN_* model
+        # come from a board fragment (KITTY_SDKCONFIG_EXTRA), not from this script.
+        if target not in _AFE_WAKE_WORD_TARGETS:
+            raise ValueError(f"Custom wake word needs an AFE target, not {target}")
+        options.append("CONFIG_USE_CUSTOM_WAKE_WORD=y")
+        return normalized, options, ["CONFIG_USE_CUSTOM_WAKE_WORD"]
+
     if target not in _ESP_WAKE_WORD_TARGETS | _AFE_WAKE_WORD_TARGETS:
         raise ValueError(f"Wake-word selection is not supported for target {target}")
     if not _WAKE_WORD_MODEL_PATTERN.fullmatch(normalized):
@@ -1445,6 +1453,13 @@ def _configure_build(
     if Path("sdkconfig.defaults").exists():
         defaults.append("sdkconfig.defaults")
     defaults.append(fragment.as_posix())
+    # Mission Kitty: an optional committed variant fragment (sdkconfig.wake), set by
+    # scripts/kitty-build.sh. It goes after the generated fragment so it wins.
+    kitty_extra = os.environ.get("KITTY_SDKCONFIG_EXTRA")
+    if kitty_extra:
+        if not Path(kitty_extra).is_file():
+            raise FileNotFoundError(f"KITTY_SDKCONFIG_EXTRA {kitty_extra!r} does not exist")
+        defaults.append(Path(kitty_extra).as_posix())
     # Mission Kitty: local, git-ignored secrets (CONFIG_KITTY_DEVICE_KEY) written by
     # scripts/kitty-key.sh. Applied last so it wins; never committed.
     kitty_local = Path("sdkconfig.kitty.local")

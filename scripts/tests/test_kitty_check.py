@@ -28,6 +28,19 @@ GOOD_SDKCONFIG = "\n".join([
     'CONFIG_KITTY_DEVICE_KEY="' + "ab" * 32 + '"',
     "",
 ])
+FACES = (
+    "neutral", "happy", "laughing", "funny", "sad", "angry", "crying", "loving", "embarrassed",
+    "surprised", "shocked", "thinking", "winking", "cool", "relaxed", "delicious", "kissy",
+    "confident", "sleepy", "silly", "confused", "listening",
+)
+GOOD_ASSETS = b"\0".join([b"index.json", b"font.bin"] + [f"{f}.gif".encode() for f in FACES])
+WAKE_SDKCONFIG = "\n".join([
+    "CONFIG_USE_CUSTOM_WAKE_WORD=y",
+    'CONFIG_CUSTOM_WAKE_WORD="hey kitty"',
+    'CONFIG_CUSTOM_WAKE_WORD_LANGUAGE="en"',
+    "CONFIG_SR_MN_EN_MULTINET7_QUANT=y",
+    "",
+])
 
 
 class KittyCheckTamperTests(unittest.TestCase):
@@ -43,6 +56,12 @@ class KittyCheckTamperTests(unittest.TestCase):
         (self.dir / "merged-binary.bin").write_bytes(b"\0boot\0" + GOOD_APP)
         (self.dir / "sdkconfig").write_text(GOOD_SDKCONFIG)
         (self.dir / "config" / "sdkconfig.h").write_text("#define CONFIG_KITTY_LOCKDOWN 1\n")
+        (self.dir / "generated_assets.bin").write_bytes(GOOD_ASSETS)
+
+    def rename_dir(self, name):
+        target = self.dir.parent / name
+        self.dir.rename(target)
+        self.dir = target
 
     def run_check(self, env=None):
         return subprocess.run(
@@ -151,6 +170,60 @@ class KittyCheckTamperTests(unittest.TestCase):
     def test_key_never_printed(self):
         run = self.run_check()
         self.assertNotIn("ab" * 32, run.stdout + run.stderr)
+
+    # Kitty face (Task 29)
+    def test_missing_assets_image(self):
+        (self.dir / "generated_assets.bin").unlink()
+        self.assert_fails("generated_assets.bin not found")
+
+    def test_every_face_must_be_in_the_assets(self):
+        for face in ("neutral", "confused", "listening"):
+            with self.subTest(face=face):
+                self.setUp()
+                assets = self.dir / "generated_assets.bin"
+                assets.write_bytes(assets.read_bytes().replace(f"{face}.gif".encode(), b"x.gif"))
+                self.assert_fails(f"kitty face {face}.gif")
+
+    # Push to talk vs wake word (Task 28, R9)
+    def test_ptt_folder_passes_with_wake_word_disabled(self):
+        self.rename_dir("build-ptt")
+        cfg = self.dir / "sdkconfig"
+        cfg.write_text(cfg.read_text() + "CONFIG_WAKE_WORD_DISABLED=y\n")
+        self.assert_ok()
+
+    def test_ptt_folder_refuses_wake_word(self):
+        self.rename_dir("build-ptt")
+        cfg = self.dir / "sdkconfig"
+        cfg.write_text(cfg.read_text() + WAKE_SDKCONFIG)
+        self.assert_fails("build-ptt must be push to talk")
+
+    def test_wake_build_passes(self):
+        cfg = self.dir / "sdkconfig"
+        cfg.write_text(cfg.read_text() + WAKE_SDKCONFIG)
+        assets = self.dir / "generated_assets.bin"
+        assets.write_bytes(assets.read_bytes() + b"\0mn7_en\0")
+        self.assert_ok()
+
+    def test_wake_build_requirements(self):
+        cases = (
+            ('CONFIG_CUSTOM_WAKE_WORD_LANGUAGE="en"', 'CONFIG_CUSTOM_WAKE_WORD_LANGUAGE="cn"',
+             "CUSTOM_WAKE_WORD_LANGUAGE"),
+            ("CONFIG_SR_MN_EN_MULTINET7_QUANT=y", "# CONFIG_SR_MN_EN_MULTINET7_QUANT is not set",
+             "SR_MN_EN_MULTINET7_QUANT"),
+        )
+        for old, new, needle in cases:
+            with self.subTest(needle=needle):
+                self.setUp()
+                cfg = self.dir / "sdkconfig"
+                cfg.write_text(cfg.read_text() + WAKE_SDKCONFIG.replace(old, new))
+                assets = self.dir / "generated_assets.bin"
+                assets.write_bytes(assets.read_bytes() + b"\0mn7_en\0")
+                self.assert_fails(needle)
+
+    def test_wake_build_needs_english_model_in_assets(self):
+        cfg = self.dir / "sdkconfig"
+        cfg.write_text(cfg.read_text() + WAKE_SDKCONFIG)
+        self.assert_fails("mn7_en")
 
 
 if __name__ == "__main__":

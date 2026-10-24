@@ -870,7 +870,19 @@ def get_emoji_collection_path(default_emoji_collection, noto_fonts_path, project
         else:
             print("Warning: project_root not provided, cannot locate otto-gif collection")
             return None
-    
+
+    # Mission Kitty face, kept in its board folder (generator: kitty-face/generate.py there)
+    if default_emoji_collection == 'kitty-gif':
+        if not project_root:
+            print("Warning: project_root not provided, cannot locate kitty-gif collection")
+            return None
+        kitty_gif_path = os.path.join(project_root, 'main', 'boards', 'lafvin-s3-169-cam',
+                                      'kitty-gif')
+        if os.path.exists(kitty_gif_path):
+            return kitty_gif_path
+        print(f"Warning: kitty-gif emoji collection directory not found: {kitty_gif_path}")
+        return None
+
     # Try PNG emoji collections first.
     emoji_path = os.path.join(noto_fonts_path, 'png', default_emoji_collection)
     if os.path.exists(emoji_path):

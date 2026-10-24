@@ -5,7 +5,7 @@
 # per variant with its own sdkconfig (R9: build-ptt, build-wake), then runs kitty-check.sh on it.
 # Flash from <out_dir> only, never from build/ (scripts/build.py reuses build/ for every variant).
 #
-# Without extra options: en-US, wake word disabled (push to talk on BOOT). Language and wake word
+# Without extra options: en-US; the wake word follows the variant (see below). Language and wake word
 # are build parameters, never board config.json options (upstream rule); kitty-check.sh still
 # requires CONFIG_LANGUAGE_EN_US=y in the result.
 # Run from a shell where ESP-IDF is exported:
@@ -16,7 +16,25 @@ cd "$(dirname "$0")/.."
 variant=${1:?usage: kitty-build.sh <variant> <out_dir> [build.py options]}
 out=${2:?usage: kitty-build.sh <variant> <out_dir> [build.py options]}
 shift 2
-[ $# -gt 0 ] || set -- --language en-US --wake-word disabled
+
+# Two variants (D10, R9):
+#   lafvin-s3-169-cam       -> build-ptt:  hold BOOT to talk, no wake word. The one we flash.
+#   lafvin-s3-169-cam-wake  -> build-wake: also "Hey Kitty" (English MultiNet7), from the
+#                              committed fragment main/boards/lafvin-s3-169-cam/sdkconfig.wake.
+unset KITTY_SDKCONFIG_EXTRA
+case "$variant" in
+lafvin-s3-169-cam)
+    [ $# -gt 0 ] || set -- --language en-US --wake-word disabled
+    ;;
+lafvin-s3-169-cam-wake)
+    [ $# -gt 0 ] || set -- --language en-US --wake-word custom
+    export KITTY_SDKCONFIG_EXTRA=main/boards/lafvin-s3-169-cam/sdkconfig.wake
+    ;;
+*)
+    echo "kitty-build: unknown variant '$variant'" >&2
+    exit 2
+    ;;
+esac
 
 case "$out" in
 build | build/* | ./build | ./build/*)

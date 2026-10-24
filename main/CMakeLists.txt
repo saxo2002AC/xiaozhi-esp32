@@ -1396,6 +1396,13 @@ function(build_default_assets_bin)
         file(GLOB DEFAULT_EMOJI_FILES CONFIGURE_DEPENDS
             "${NOTO_FONTS_PATH}/png/${DEFAULT_EMOJI_COLLECTION}/*"
         )
+        if(DEFAULT_EMOJI_COLLECTION STREQUAL "kitty-gif")
+            # Mission Kitty face: rebuild the assets when a GIF changes.
+            file(GLOB KITTY_GIF_FILES CONFIGURE_DEPENDS
+                "${PROJECT_DIR}/main/boards/lafvin-s3-169-cam/kitty-gif/*.gif"
+            )
+            list(APPEND DEFAULT_EMOJI_FILES ${KITTY_GIF_FILES})
+        endif()
         list(APPEND DEFAULT_ASSETS_DEPENDENCIES ${DEFAULT_EMOJI_FILES})
     endif()
 

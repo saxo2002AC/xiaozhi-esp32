@@ -12,7 +12,7 @@ OV3660 camera, an ICS-43434 I2S mic and a MAX98357 I2S amp. It is derived from
 | Camera OV3660 | XCLK 17 (20 MHz), SIOD 1, SIOC 2, VSYNC 21, HREF 18, PCLK 16, D0-D7 = 7, 5, 4, 6, 8, 9, 11, 15, PWDN/RESET not connected |
 | Mic ICS-43434 (I2S RX) | WS 40, SCK 41, SD 42 |
 | Amp MAX98357 (I2S TX) | DIN 45, BCLK 46, LRCLK 47 |
-| BOOT button | GPIO0: push to talk; during start-up it opens Wi-Fi config |
+| BOOT button | GPIO0: hold to talk (press = listen, release = send); a click during start-up opens Wi-Fi config |
 | WS2812 LED | GPIO48 |
 
 Camera frames are RGB565 VGA in PSRAM, as in the reference board.
@@ -63,7 +63,50 @@ artifacts and `sdkconfig` into `build-ptt/` and runs `scripts/kitty-check.sh bui
 print `KITTY CHECK OK`. The check fails on `tenclass` or `xiaozhi.me` in the image, a missing
 `192.168.0.11`, any http/https/ws/wss/mqtt URL to another host (exceptions: the local AP page
 `192.168.4.1`, bare scheme prefixes, and the SVG XML namespace in the Wi-Fi config page), a
-registered URL tool, or a non-lockdown sdkconfig.
+registered URL tool, or a non-lockdown sdkconfig. It also fails when a kitty face is missing
+from the source folder or from `generated_assets.bin`, when `build-ptt` enables a wake word, or
+when a wake build lacks the English MultiNet7 config or the `mn7_en` model in its assets.
+
+## Talking: hold BOOT, or the optional "Hey Kitty" build
+
+Hold to talk on BOOT is the compiled default. No MCP tool lets the LLM switch modes. Two variants
+come from `config.json`, each built into its own folder:
+
+| Variant | Folder | Wake word |
+|---|---|---|
+| `lafvin-s3-169-cam` | `build-ptt` | none (`CONFIG_WAKE_WORD_DISABLED=y`). This is the one we flash |
+| `lafvin-s3-169-cam-wake` | `build-wake` | "Hey Kitty" as well as BOOT. Off until it passes the living-room false-trigger test |
+
+```sh
+. ~/esp/esp-idf-v6/export.sh && scripts/kitty-build.sh lafvin-s3-169-cam-wake build-wake
+```
+
+The wake variant builds with `--wake-word custom` and the committed fragment `sdkconfig.wake`:
+
+- `CONFIG_USE_CUSTOM_WAKE_WORD=y`
+- `CONFIG_CUSTOM_WAKE_WORD="hey kitty"` and display text "Hey Kitty"
+- `CONFIG_CUSTOM_WAKE_WORD_LANGUAGE="en"`
+- threshold 20
+- the English MultiNet7 model `CONFIG_SR_MN_EN_MULTINET7_QUANT=y`
+
+That MultiNet symbol comes from esp-sr 2.4.7, `Kconfig.projbuild`, choice
+`ENGLISH_SR_MN_MODEL_SEL`, "general english recognition (mn7_en)". The model is packed into the
+assets image (`mn7_en` plus `fst`, about 2.6 MB).
+
+`CustomWakeWord` used to hard-code `"cn"` on its Kconfig path. It now reads
+`CONFIG_CUSTOM_WAKE_WORD_LANGUAGE`. Upstream does not allow wake-word or language options in a
+board `config.json` (`scripts/tests/test_build.py`), which is why they live in the fragment.
+
+## Face (`kitty-gif`)
+
+The emotion GIFs are original art made by `kitty-face/generate.py`. See `kitty-gif/SOURCES.md`
+and `kitty-face/contact-sheet.png`.
+
+`KittyLcdDisplay`, a board-local subclass of `SpiLcdDisplay`, adds two moods that the core does not
+set:
+
+- `listening`: replaces "neutral" while the status is Listening;
+- `thinking`: shown once the child's words are recognized.
 
 ## Flashing (Task 30, not here)
 

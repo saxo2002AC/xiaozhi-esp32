@@ -1045,6 +1045,14 @@ config CUSTOM_WAKE_WORD_DISPLAY
     help
         Greeting sent to the server after wake word detection
 
+config CUSTOM_WAKE_WORD_LANGUAGE
+    string "Custom Wake Word Language"
+    default "cn"
+    depends on USE_CUSTOM_WAKE_WORD
+    help
+        MultiNet model language for the custom wake word: "cn" (pinyin) or "en" (English
+        words). Select the matching CONFIG_SR_MN_* model.
+
 config CUSTOM_WAKE_WORD_THRESHOLD
     int "Custom Wake Word Threshold (%)"
     default 20

@@ -87,7 +87,13 @@ bool CustomWakeWord::Initialize(AudioCodec* codec, srmodel_list_t* models_list) 
     commands_.clear();
 
     if (models_list == nullptr) {
+        // MultiNet language of the Kconfig wake word ("cn" upstream, "en" for "hey kitty"). The
+        // symbol only exists with USE_CUSTOM_WAKE_WORD, but this file builds on every S3 target.
+#ifdef CONFIG_CUSTOM_WAKE_WORD_LANGUAGE
+        language_ = CONFIG_CUSTOM_WAKE_WORD_LANGUAGE;
+#else
         language_ = "cn";
+#endif
         models_ = esp_srmodel_init("model");
         owns_models_ = models_ != nullptr;
 #ifdef CONFIG_CUSTOM_WAKE_WORD
