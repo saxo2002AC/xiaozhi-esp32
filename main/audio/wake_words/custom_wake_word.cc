@@ -112,7 +112,10 @@ bool CustomWakeWord::Initialize(AudioCodec* codec, srmodel_list_t* models_list) 
     }
     if (mn_name_ == nullptr) {
         ESP_LOGE(TAG, "Failed to initialize multinet, mn_name is nullptr");
+#ifndef CONFIG_KITTY_LOCKDOWN
+        // Lockdown images carry no off-LAN URLs at all, not even in log text (kitty-check.sh).
         ESP_LOGI(TAG, "Please refer to https://pcn7cs20v8cr.feishu.cn/wiki/CpQjwQsCJiQSWSkYEvrcxcbVnwh to add custom wake word");
+#endif
         return false;
     }
 

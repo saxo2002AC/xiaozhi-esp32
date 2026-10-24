@@ -934,7 +934,7 @@ if(NOT BOARD_DIR AND NOT CMAKE_BUILD_EARLY_EXPANSION)
     message(FATAL_ERROR "The selected board does not define BOARD_DIR")
 endif()
 
-# Mission Kitty lockdown: refuse to build an image that could not reach the Mini, or that would
+# Mission Kitty lockdown: refuse to build an image that could not reach the Kitty server, or that would
 # reach anything else. The key value is never printed.
 if(CONFIG_KITTY_LOCKDOWN AND NOT CMAKE_BUILD_EARLY_EXPANSION)
     if("${CONFIG_KITTY_DEVICE_KEY}" STREQUAL "")

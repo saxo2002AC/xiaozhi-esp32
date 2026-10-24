@@ -2,6 +2,7 @@
 #include "system_info.h"
 #include "settings.h"
 #include "assets/lang_config.h"
+#include "kitty_lockdown.h"
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -29,6 +30,23 @@
 #ifdef CONFIG_KITTY_LOCKDOWN
 static_assert(sizeof(CONFIG_KITTY_DEVICE_KEY) > 1,
               "KITTY_LOCKDOWN needs CONFIG_KITTY_DEVICE_KEY (scripts/kitty-key.sh)");
+
+// A server section is stored only when its destination is the Kitty server. Otherwise the whole
+// section is dropped and the values already in NVS stay as they were.
+static bool KittySectionAllowed(const cJSON* section, const char* section_name, const char* key,
+                                bool is_url) {
+    if (!cJSON_IsObject(section)) {
+        return false;
+    }
+    const cJSON* value = cJSON_GetObjectItem(section, key);
+    if (cJSON_IsString(value) && (is_url ? kitty::KittyUrlAllowed(value->valuestring)
+                                         : kitty::KittyEndpointAllowed(value->valuestring))) {
+        return true;
+    }
+    ESP_LOGW(TAG, "Rejecting %s section, %s \"%s\" is not the Kitty server (lockdown)",
+             section_name, key, cJSON_IsString(value) ? value->valuestring : "(missing)");
+    return false;
+}
 #endif
 
 Ota::Ota() {
@@ -172,7 +190,11 @@ NetworkResult<> Ota::CheckVersion() {
 
     has_mqtt_config_ = false;
     cJSON *mqtt = cJSON_GetObjectItem(root, "mqtt");
+#ifdef CONFIG_KITTY_LOCKDOWN
+    if (KittySectionAllowed(mqtt, "mqtt", "endpoint", false)) {
+#else
     if (cJSON_IsObject(mqtt)) {
+#endif
         Settings settings("mqtt", true);
         cJSON *item = NULL;
         cJSON_ArrayForEach(item, mqtt) {
@@ -193,7 +215,11 @@ NetworkResult<> Ota::CheckVersion() {
 
     has_websocket_config_ = false;
     cJSON *websocket = cJSON_GetObjectItem(root, "websocket");
+#ifdef CONFIG_KITTY_LOCKDOWN
+    if (KittySectionAllowed(websocket, "websocket", "url", true)) {
+#else
     if (cJSON_IsObject(websocket)) {
+#endif
         Settings settings("websocket", true);
         cJSON *item = NULL;
         cJSON_ArrayForEach(item, websocket) {
@@ -300,7 +326,7 @@ void Ota::MarkCurrentVersionValid() {
 
 bool Ota::Upgrade(const std::string& firmware_url, std::function<void(int progress, size_t speed)> callback) {
 #ifdef CONFIG_KITTY_LOCKDOWN
-    // Firmware is only ever written over USB by Andrés. No over-the-air path exists.
+    // Firmware is only ever written over USB. No over-the-air path exists.
     ESP_LOGW(TAG, "Firmware upgrade refused (lockdown)");
     return false;
 #endif

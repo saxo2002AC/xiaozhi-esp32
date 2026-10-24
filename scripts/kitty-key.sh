@@ -2,48 +2,67 @@
 # kitty-key.sh
 #
 # Writes sdkconfig.kitty.local (mode 600, git-ignored) with CONFIG_KITTY_DEVICE_KEY, which the
-# firmware sends as the Kitty-Key header on OTA. The key is read over ssh from the Mini's
-# ~/apps/mision-kitty/.env and never printed or committed.
+# firmware sends as the Kitty-Key header on OTA. The key is read over ssh from the server's env file
+# and is never printed or committed.
 #
-# If the Mini has no KITTY_DEVICE_KEY yet, a non-hex placeholder is written instead; the server can
-# never accept it (it compares against a 64-hex secret). kitty-check.sh reports it, and with
+# Where the key lives is local knowledge, not repo content:
+#   KITTY_KEY_SOURCE=<ssh-host>:<path-to-env-file>
+# taken from the environment, or else from the git-ignored file kitty-key.local in the repo root
+# (one line, same syntax). The env file must hold a KITTY_DEVICE_KEY=<64 lowercase hex> line.
+#
+# With no source configured, or no key in the env file, a non-hex placeholder is written instead; a
+# server comparing against a 64-hex secret can never accept it. kitty-check.sh reports it, and with
 # KITTY_REQUIRE_REAL_KEY=1 both this script and kitty-check.sh refuse it.
-#
-# Env: KITTY_KEY_HOST (ssh host, default "mini").
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 out=sdkconfig.kitty.local
-host=${KITTY_KEY_HOST:-mini}
 placeholder="KITTY-PLACEHOLDER-NOT-A-REAL-KEY"
+require_real=${KITTY_REQUIRE_REAL_KEY:-0}
+
+src=${KITTY_KEY_SOURCE:-}
+if [ -z "$src" ] && [ -f kitty-key.local ]; then
+    src=$(sed -n 's/^KITTY_KEY_SOURCE=//p' kitty-key.local | head -n 1)
+fi
 
 umask 077
 tmp=$(mktemp "$out.XXXXXX")
 trap 'rm -f "$tmp"' EXIT
 
-# Only the matching line crosses the wire; it is held in a variable, never echoed.
-if ! line=$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" \
-    'grep -E "^KITTY_DEVICE_KEY=" ~/apps/mision-kitty/.env || true'); then
-    echo "kitty-key: ssh to $host failed; not writing $out" >&2
-    exit 1
+key=""
+if [ -z "$src" ]; then
+    kind="placeholder (no KITTY_KEY_SOURCE configured)"
+else
+    host=${src%%:*}
+    path=${src#*:}
+    if [ "$host" = "$src" ] || [ -z "$host" ] || [ -z "$path" ] ||
+        ! [[ $host =~ ^[A-Za-z0-9_.@-]+$ ]] || ! [[ $path =~ ^[A-Za-z0-9_./~-]+$ ]]; then
+        echo "kitty-key: KITTY_KEY_SOURCE must look like <ssh-host>:<path-to-env-file>" >&2
+        exit 1
+    fi
+    # Only the matching line crosses the wire; it is held in a variable, never echoed.
+    if ! line=$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" \
+        "grep -E '^KITTY_DEVICE_KEY=' $path || true"); then
+        echo "kitty-key: ssh to the key source failed; not writing $out" >&2
+        exit 1
+    fi
+    key=${line#KITTY_DEVICE_KEY=}
+    key=${key%$'\r'}
+    key=${key#\"}
+    key=${key%\"}
+    kind="placeholder (KITTY_DEVICE_KEY not set at the key source yet)"
 fi
 
-key=${line#KITTY_DEVICE_KEY=}
-key=${key%$'\r'}
-key=${key#\"}
-key=${key%\"}
-
-if [ -z "$line" ] || [ -z "$key" ]; then
-    if [ "${KITTY_REQUIRE_REAL_KEY:-0}" = 1 ]; then
-        echo "kitty-key: KITTY_DEVICE_KEY is not set on $host and KITTY_REQUIRE_REAL_KEY=1" >&2
+if [ -z "$key" ]; then
+    if [ "$require_real" = 1 ]; then
+        echo "kitty-key: no real key and KITTY_REQUIRE_REAL_KEY=1: $kind" >&2
         exit 1
     fi
     key=$placeholder
-    kind="placeholder (KITTY_DEVICE_KEY not set on $host yet; rebuild before flashing)"
 elif [[ $key =~ ^[0-9a-f]{64}$ ]]; then
-    kind="real key from $host"
+    kind="real key from the key source"
 else
-    echo "kitty-key: KITTY_DEVICE_KEY on $host is not 64 lowercase hex; refusing" >&2
+    echo "kitty-key: KITTY_DEVICE_KEY at the key source is not 64 lowercase hex; refusing" >&2
     exit 1
 fi
 

@@ -18,6 +18,7 @@
 #include "lvgl_image.h"
 #include "lvgl_theme.h"
 #include "settings.h"
+#include "kitty_lockdown.h"
 
 #define TAG "MCP"
 
@@ -179,7 +180,8 @@ void McpServer::AddUserOnlyTools() {
                             return json;
                         });
 
-#if CONFIG_LV_USE_SNAPSHOT
+// Both tools below take an arbitrary URL (upload / download), so KITTY_LOCKDOWN drops them.
+#if CONFIG_LV_USE_SNAPSHOT && !defined(CONFIG_KITTY_LOCKDOWN)
         AddUserOnlyTool(
             "self.screen.snapshot", "Snapshot the screen and upload it to a specific URL",
             PropertyList({Property("url", kPropertyTypeString),
@@ -312,7 +314,7 @@ void McpServer::AddUserOnlyTools() {
                 display->SetPreviewImage(std::move(image));
                 return true;
             });
-#endif  // CONFIG_LV_USE_SNAPSHOT
+#endif  // CONFIG_LV_USE_SNAPSHOT && !CONFIG_KITTY_LOCKDOWN
     }
 #endif  // HAVE_LVGL
 
@@ -373,6 +375,14 @@ void McpServer::ParseCapabilities(const cJSON* capabilities) {
             auto camera = Board::GetInstance().GetCamera();
             if (camera) {
                 std::string url_str = std::string(url->valuestring);
+#ifdef CONFIG_KITTY_LOCKDOWN
+                // Photos go only to the Kitty server; keep the previous explain url otherwise.
+                if (!kitty::KittyUrlAllowed(url_str)) {
+                    ESP_LOGE(TAG, "Refusing vision url \"%s\": not the Kitty server (lockdown)",
+                             url_str.c_str());
+                    return;
+                }
+#endif
                 std::string token_str;
                 if (cJSON_IsString(token)) {
                     token_str = std::string(token->valuestring);

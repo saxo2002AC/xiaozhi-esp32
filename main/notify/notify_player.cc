@@ -9,6 +9,7 @@
 
 #include "board.h"
 #include "http.h"
+#include "kitty_lockdown.h"
 #include "ogg_demuxer.h"
 
 namespace {
@@ -19,6 +20,14 @@ constexpr UBaseType_t kNotifyTaskPriority = 2;
 const char* TAG = "NotifyPlayer";
 
 bool IsSupportedUrl(const std::string& url) {
+#ifdef CONFIG_KITTY_LOCKDOWN
+    // Notification audio is fetched only from the Kitty server.
+    if (!kitty::KittyUrlAllowed(url)) {
+        ESP_LOGE(TAG, "Refusing notify audio url \"%s\": not the Kitty server (lockdown)",
+                 url.c_str());
+        return false;
+    }
+#endif
     return url.compare(0, 7, "http://") == 0 || url.compare(0, 8, "https://") == 0;
 }
 }  // namespace

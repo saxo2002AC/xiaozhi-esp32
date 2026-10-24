@@ -10,6 +10,7 @@
 #include <cstring>
 #include <system_error>
 #include "assets/lang_config.h"
+#include "kitty_lockdown.h"
 
 #define TAG "MQTT"
 
@@ -92,6 +93,17 @@ bool MqttProtocol::StartMqttClient(bool report_error) {
         }
         return false;
     }
+#ifdef CONFIG_KITTY_LOCKDOWN
+    // NVS may still hold a cloud endpoint from the factory firmware; never connect to it.
+    if (!kitty::KittyEndpointAllowed(endpoint)) {
+        ESP_LOGE(TAG, "Refusing MQTT endpoint \"%s\": not the Kitty server (lockdown)",
+                 endpoint.c_str());
+        if (report_error) {
+            SetError(Lang::Strings::SERVER_NOT_FOUND);
+        }
+        return false;
+    }
+#endif
 
     auto network = Board::GetInstance().GetNetwork();
     mqtt_ = network->CreateMqtt(0);
@@ -452,6 +464,14 @@ void MqttProtocol::ParseServerHello(const cJSON* root) {
     }
     const std::string udp_server = server->valuestring;
     const int udp_port = port->valueint;
+#ifdef CONFIG_KITTY_LOCKDOWN
+    // Keep the previous UDP server; never send audio to a host other than the Kitty server.
+    if (!kitty::KittyEndpointAllowed(udp_server)) {
+        ESP_LOGE(TAG, "Refusing UDP server \"%s\": not the Kitty server (lockdown)",
+                 udp_server.c_str());
+        return;
+    }
+#endif
 
     // auto encryption = cJSON_GetObjectItem(udp, "encryption")->valuestring;
     // ESP_LOGI(TAG, "UDP server: %s, port: %d, encryption: %s", udp_server_.c_str(), udp_port_,

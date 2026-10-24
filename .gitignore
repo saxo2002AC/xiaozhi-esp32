@@ -21,4 +21,5 @@ mmap_generate_*.h
 # Mission Kitty: device-key fragment (secret) and per-variant build folders (R9)
 sdkconfig.kitty.local
 sdkconfig.kitty.local.*
+kitty-key.local
 build-*/

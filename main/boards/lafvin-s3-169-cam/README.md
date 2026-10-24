@@ -26,7 +26,13 @@ menuconfig or a fragment. With it:
 - The OTA request carries `Kitty-Key: <CONFIG_KITTY_DEVICE_KEY>`; the server answers 403 without it.
 - `Ota::CheckVersion` ignores a `firmware` section; `has_new_version_` is never set.
 - `Ota::Upgrade` and `Application::UpgradeFirmware` return false at once.
-- `self.upgrade_firmware` and `self.assets.set_download_url` are not registered.
+- `self.upgrade_firmware`, `self.assets.set_download_url`, `self.screen.snapshot` and
+  `self.screen.preview_image` are not registered (each takes an arbitrary URL).
+- Every server-supplied destination passes `main/kitty_lockdown.h`: only `http://` or `ws://` URLs
+  (or a `host[:port]` endpoint) whose host is exactly `KITTY_SERVER_HOST`. This covers the
+  websocket url and MQTT endpoint (checked before they are stored from the OTA reply, and again
+  before connecting, since NVS may hold factory values), the MQTT UDP server, the vision explain url
+  and notify audio urls. A rejected value is logged and the previous one kept.
 - `Application::CheckAssetsVersion` never downloads assets; a stale `download_url` is erased.
 - CMake fails if `CONFIG_KITTY_DEVICE_KEY` is empty or `CONFIG_OTA_URL` is not
   `http://<KITTY_SERVER_HOST>:<KITTY_HTTP_PORT>/xiaozhi/ota/`.
@@ -36,10 +42,13 @@ the real port; change `CONFIG_KITTY_HTTP_PORT` and `CONFIG_OTA_URL` together in 
 
 ## Device key
 
-The key is never committed. `scripts/kitty-key.sh` reads `KITTY_DEVICE_KEY` from the Mini's
-`~/apps/mision-kitty/.env` over ssh and writes the git-ignored `sdkconfig.kitty.local` (mode 600),
-which `scripts/build.py` applies last. If the Mini has no key yet it writes a non-hex placeholder that
-the server can never accept. `KITTY_REQUIRE_REAL_KEY=1` makes both scripts refuse the placeholder.
+The key is never committed. `scripts/kitty-key.sh` reads `KITTY_DEVICE_KEY` over ssh from the
+server's env file and writes the git-ignored `sdkconfig.kitty.local` (mode 600), which
+`scripts/build.py` applies last. Where the key lives is configured locally, never in the repo:
+`KITTY_KEY_SOURCE=<ssh-host>:<path-to-env-file>`, from the environment or from the git-ignored
+`kitty-key.local` in the repo root. With no source, or no key at the source, it writes a non-hex
+placeholder that the server can never accept. `KITTY_REQUIRE_REAL_KEY=1` makes both scripts refuse
+the placeholder.
 
 ## Build
 
@@ -52,7 +61,9 @@ One folder per variant (never flash from `build/`, which `scripts/build.py` reus
 `kitty-build.sh` fetches the key, builds with the wake word disabled (push to talk), copies the
 artifacts and `sdkconfig` into `build-ptt/` and runs `scripts/kitty-check.sh build-ptt`, which must
 print `KITTY CHECK OK`. The check fails on `tenclass` or `xiaozhi.me` in the image, a missing
-`192.168.0.11`, a registered download tool, or a non-lockdown sdkconfig.
+`192.168.0.11`, any http/https/ws/wss/mqtt URL to another host (exceptions: the local AP page
+`192.168.4.1`, bare scheme prefixes, and the SVG XML namespace in the Wi-Fi config page), a
+registered URL tool, or a non-lockdown sdkconfig.
 
 ## Flashing (Task 30, not here)
 

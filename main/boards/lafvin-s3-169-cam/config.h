@@ -68,6 +68,8 @@
 #define DISPLAY_OFFSET_X  0
 #define DISPLAY_OFFSET_Y  20
 #define DISPLAY_BACKLIGHT_OUTPUT_INVERT false
+// Mode 0 as in the reference profile. LAFVIN's Arduino_GFX demos drive this ST7789 in SPI MODE3;
+// if the panel shows garbage or stays blank on hardware, switch this to 3 (verified in Task 30).
 #define DISPLAY_SPI_MODE 0
 
 #endif // _BOARD_CONFIG_H_

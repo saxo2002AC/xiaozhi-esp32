@@ -9,6 +9,7 @@
 #include <cJSON.h>
 #include <cstring>
 #include "assets/lang_config.h"
+#include "kitty_lockdown.h"
 
 #define TAG "WS"
 
@@ -79,6 +80,14 @@ void WebsocketProtocol::CloseAudioChannel(bool send_goodbye) {
 bool WebsocketProtocol::OpenAudioChannel() {
     Settings settings("websocket", false);
     std::string url = settings.GetString("url");
+#ifdef CONFIG_KITTY_LOCKDOWN
+    // NVS may still hold a cloud url from the factory firmware; never connect to it.
+    if (!kitty::KittyUrlAllowed(url)) {
+        ESP_LOGE(TAG, "Refusing websocket url \"%s\": not the Kitty server (lockdown)", url.c_str());
+        SetError(Lang::Strings::SERVER_NOT_CONNECTED);
+        return false;
+    }
+#endif
     std::string token = settings.GetString("token");
     int version = settings.GetInt("version");
     if (version != 0) {

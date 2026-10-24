@@ -4,8 +4,10 @@
 # Mission Kitty lockdown gate. Run it on every build folder before anything is flashed.
 # It fails when:
 #   - the app image (and the merged image, if present) contains "tenclass" or "xiaozhi.me";
-#   - the app image does not contain the Mini's LAN address 192.168.0.11;
-#   - the app image still registers the remote firmware or asset download MCP tools;
+#   - the app image does not contain the Kitty server's LAN address 192.168.0.11;
+#   - the images contain an http/https/ws/wss/mqtt URL to any other host (see the exceptions below);
+#   - the app image registers an MCP tool that uploads to or downloads from an arbitrary URL
+#     (firmware upgrade, asset download, screen snapshot, image preview);
 #   - the build's sdkconfig is not the locked-down, en-US, ST7789 240x280 lafvin-s3-169-cam config;
 #   - the device key is empty.
 # It never prints the device key. With KITTY_REQUIRE_REAL_KEY=1 (Task 30, before flashing) it also
@@ -53,10 +55,43 @@ done
 
 strings -a "$bin" >"$work/app.txt"
 grep -qF "192.168.0.11" "$work/app.txt" || fail "$bin does not contain 192.168.0.11"
-for tool in self.upgrade_firmware self.assets.set_download_url; do
+# MCP tools that fetch from or upload to an arbitrary URL must not be registered.
+for tool in self.upgrade_firmware self.assets.set_download_url self.screen.snapshot \
+    self.screen.preview_image; do
     if grep -qF "$tool" "$work/app.txt"; then
         fail "$bin still registers $tool"
     fi
+done
+
+# Every http/https/ws/wss/mqtt/mqtts URL in the images must point at 192.168.0.11.
+# Explicit exceptions, nothing else:
+#   - 192.168.4.1: the device's own Wi-Fi config AP page;
+#   - a bare scheme with no host ("http://", "https://"): prefix literals used to test URLs;
+#   - http://www.w3.org/2000/svg: the SVG XML namespace inside the Wi-Fi config page (an
+#     identifier, never fetched; it comes from the managed esp-wifi-connect component).
+# CA-bundle names carry no scheme, so they never match.
+for img in "${images[@]}"; do
+    LC_ALL=C grep -aoiE '(https?|wss?|mqtts?)://[^[:space:][:cntrl:]"<>]*' "$img" \
+        >"$work/urls.txt" || true
+    while IFS= read -r url; do
+        url=${url%%\'*}
+        rest=${url#*://}
+        authority=${rest%%[/?#]*}
+        host=${authority%%:*}
+        if [ -z "$authority" ]; then
+            continue
+        fi
+        case "$authority" in
+        *@*) fail "$img has a URL with userinfo: $url" ;;
+        esac
+        case "$host" in
+        192.168.0.11 | 192.168.4.1) continue ;;
+        esac
+        if [ "$url" = "http://www.w3.org/2000/svg" ]; then
+            continue
+        fi
+        fail "$img contains an off-LAN URL: $url"
+    done <"$work/urls.txt"
 done
 
 for want in \
@@ -80,7 +115,7 @@ if grep -qE '^CONFIG_KITTY_DEVICE_KEY="[0-9a-f]{64}"$' "$cfg"; then
     echo "KITTY CHECK KEY: real (64 hex)"
 elif grep -qE '^CONFIG_KITTY_DEVICE_KEY=".+"$' "$cfg"; then
     if [ "${KITTY_REQUIRE_REAL_KEY:-0}" = 1 ]; then
-        fail "device key is a placeholder; rebuild after KITTY_DEVICE_KEY exists in the Mini's .env"
+        fail "device key is a placeholder; rebuild after KITTY_DEVICE_KEY exists at the key source"
     fi
     echo "KITTY CHECK NOTE: placeholder device key; this image gets 403 from the server. Rebuild before flashing (Task 30)."
 else
