@@ -1,0 +1,15 @@
+{
+    "type": "lafvin-s3-169-cam",
+    "target": "esp32s3",
+    "builds": [
+        {
+            "name": "lafvin-s3-169-cam",
+            "sdkconfig_append": [
+                "CONFIG_LCD_ST7789_240X280=y",
+                "CONFIG_KITTY_HTTP_PORT=8003",
+                "CONFIG_OTA_URL=\"http://192.168.0.11:8003/xiaozhi/ota/\"",
+                "CONFIG_WAKE_WORD_DISABLED=y"
+            ]
+        }
+    ]
+}

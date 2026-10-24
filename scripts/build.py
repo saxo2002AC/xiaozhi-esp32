@@ -1445,6 +1445,11 @@ def _configure_build(
     if Path("sdkconfig.defaults").exists():
         defaults.append("sdkconfig.defaults")
     defaults.append(fragment.as_posix())
+    # Mission Kitty: local, git-ignored secrets (CONFIG_KITTY_DEVICE_KEY) written by
+    # scripts/kitty-key.sh. Applied last so it wins; never committed.
+    kitty_local = Path("sdkconfig.kitty.local")
+    if kitty_local.exists():
+        defaults.append(kitty_local.as_posix())
     _run_idf(
         f"-DIDF_TARGET={target}",
         f"-DSDKCONFIG_DEFAULTS={';'.join(defaults)}",

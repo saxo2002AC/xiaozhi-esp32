@@ -6,6 +6,42 @@ config OTA_URL
     help
         The application will access this URL to check for new firmwares and server address.
 
+# Mission Kitty lockdown. No prompt on purpose: it cannot be switched off from menuconfig or an
+# sdkconfig fragment; it follows the board type.
+config KITTY_LOCKDOWN
+    bool
+    default y if BOARD_TYPE_LAFVIN_S3_169_CAM
+    help
+        LAN-only firmware for Mission Kitty. The device only talks to the Mini at
+        KITTY_SERVER_HOST: OTA_URL is fixed at build time (the NVS ota_url is ignored),
+        firmware updates and asset downloads are compiled out, and the OTA request carries
+        the Kitty-Key header.
+
+config KITTY_SERVER_HOST
+    string
+    default "192.168.0.11"
+    depends on KITTY_LOCKDOWN
+    help
+        The Mini's LAN address. No prompt: changing it is a code change, not a config change.
+
+config KITTY_HTTP_PORT
+    int "Mission Kitty server HTTP port (OTA and vision)"
+    default 8003
+    range 1 65535
+    depends on KITTY_LOCKDOWN
+    help
+        KITTY_HTTP_PORT from the Mini's .env, allocated in Task 26. OTA_URL must be
+        http://<KITTY_SERVER_HOST>:<KITTY_HTTP_PORT>/xiaozhi/ota/; the build fails otherwise.
+
+config KITTY_DEVICE_KEY
+    string "Mission Kitty device key (Kitty-Key header)"
+    default ""
+    depends on KITTY_LOCKDOWN
+    help
+        Shared secret sent as the Kitty-Key header on OTA. Set it only in the git-ignored
+        sdkconfig.kitty.local written by scripts/kitty-key.sh. Never commit it. The build
+        fails when it is empty.
+
 choice
     prompt "Flash Assets"
     default FLASH_DEFAULT_ASSETS if !USE_EMOTE_MESSAGE_STYLE
@@ -297,6 +333,9 @@ choice BOARD_TYPE
         depends on IDF_TARGET_ESP32S3
     config BOARD_TYPE_LABPLUS_MPYTHON_V3
         bool "Labplus mPython V3"
+        depends on IDF_TARGET_ESP32S3
+    config BOARD_TYPE_LAFVIN_S3_169_CAM
+        bool "LAFVIN ESP32-S3 1.69-inch LCD + Camera"
         depends on IDF_TARGET_ESP32S3
     config BOARD_TYPE_LC_S3_WIFI_1_54TFT
         bool "LC-S3-WIFI 1.54-inch TFT"
@@ -797,7 +836,7 @@ endchoice
 
 
 choice DISPLAY_LCD_TYPE
-    depends on BOARD_TYPE_BREAD_COMPACT_WIFI_LCD || BOARD_TYPE_BREAD_COMPACT_ESP32_LCD || BOARD_TYPE_WDMOMO_CGC || BOARD_TYPE_BREAD_COMPACT_WIFI_CAM || (BOARD_TYPE_WK_ESP32S3_DEV && WK_ESP32S3_DEV_DISPLAY_LCD)
+    depends on BOARD_TYPE_BREAD_COMPACT_WIFI_LCD || BOARD_TYPE_BREAD_COMPACT_ESP32_LCD || BOARD_TYPE_WDMOMO_CGC || BOARD_TYPE_BREAD_COMPACT_WIFI_CAM || BOARD_TYPE_LAFVIN_S3_169_CAM || (BOARD_TYPE_WK_ESP32S3_DEV && WK_ESP32S3_DEV_DISPLAY_LCD)
     prompt "LCD Type"
     default LCD_ST7789_240X320
     help

@@ -26,6 +26,11 @@
 
 #define TAG "Ota"
 
+#ifdef CONFIG_KITTY_LOCKDOWN
+static_assert(sizeof(CONFIG_KITTY_DEVICE_KEY) > 1,
+              "KITTY_LOCKDOWN needs CONFIG_KITTY_DEVICE_KEY (scripts/kitty-key.sh)");
+#endif
+
 Ota::Ota() {
 #ifdef ESP_EFUSE_BLOCK_USR_DATA
     // USER_DATA may contain board metadata instead of a textual serial number.
@@ -54,6 +59,11 @@ Ota::~Ota() {
 }
 
 std::string Ota::GetCheckVersionUrl() {
+#ifdef CONFIG_KITTY_LOCKDOWN
+    // LAN-only: the URL is fixed at build time. An ota_url stored in NVS (factory firmware,
+    // Wi-Fi config page) is ignored so nothing can point the device elsewhere.
+    return CONFIG_OTA_URL;
+#endif
     Settings settings("wifi", false);
     std::string url = settings.GetString("ota_url");
     if (url.empty()) {
@@ -70,6 +80,10 @@ std::unique_ptr<Http> Ota::SetupHttp() {
     http->SetHeader("Activation-Version", has_serial_number_ ? "2" : "1");
     http->SetHeader("Device-Id", SystemInfo::GetMacAddress().c_str());
     http->SetHeader("Client-Id", board.GetUuid());
+#ifdef CONFIG_KITTY_LOCKDOWN
+    // The Mission Kitty server answers 403 to OTA requests without this header.
+    http->SetHeader("Kitty-Key", CONFIG_KITTY_DEVICE_KEY);
+#endif
     if (has_serial_number_) {
         http->SetHeader("Serial-Number", serial_number_.c_str());
         ESP_LOGI(TAG, "Setup HTTP, User-Agent: %s, Serial-Number: %s", user_agent.c_str(), serial_number_.c_str());
@@ -225,6 +239,12 @@ NetworkResult<> Ota::CheckVersion() {
 
     has_new_version_ = false;
     cJSON *firmware = cJSON_GetObjectItem(root, "firmware");
+#ifdef CONFIG_KITTY_LOCKDOWN
+    // Never offered an update: the firmware section is ignored and has_new_version_ stays false.
+    if (firmware != NULL) {
+        ESP_LOGW(TAG, "Ignoring firmware section (lockdown)");
+    }
+#else
     if (cJSON_IsObject(firmware)) {
         cJSON *version = cJSON_GetObjectItem(firmware, "version");
         if (cJSON_IsString(version)) {
@@ -252,6 +272,7 @@ NetworkResult<> Ota::CheckVersion() {
     } else {
         ESP_LOGW(TAG, "No firmware section found!");
     }
+#endif
 
     cJSON_Delete(root);
     return {};
@@ -278,6 +299,11 @@ void Ota::MarkCurrentVersionValid() {
 }
 
 bool Ota::Upgrade(const std::string& firmware_url, std::function<void(int progress, size_t speed)> callback) {
+#ifdef CONFIG_KITTY_LOCKDOWN
+    // Firmware is only ever written over USB by Andrés. No over-the-air path exists.
+    ESP_LOGW(TAG, "Firmware upgrade refused (lockdown)");
+    return false;
+#endif
     ESP_LOGI(TAG, "Upgrading firmware from %s", firmware_url.c_str());
     esp_ota_handle_t update_handle = 0;
     auto update_partition = esp_ota_get_next_update_partition(NULL);

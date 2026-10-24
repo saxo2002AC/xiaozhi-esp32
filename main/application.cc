@@ -412,6 +412,13 @@ void Application::CheckAssetsVersion() {
     // Check if there is a new assets need to be downloaded
     std::string download_url = settings.GetString("download_url");
 
+#ifdef CONFIG_KITTY_LOCKDOWN
+    // Assets come only from the USB flash. A stale download_url in NVS is dropped, never fetched.
+    if (!download_url.empty()) {
+        settings.EraseKey("download_url");
+        ESP_LOGW(TAG, "Ignoring assets download_url (lockdown)");
+    }
+#else
     if (!download_url.empty()) {
         settings.EraseKey("download_url");
 
@@ -445,6 +452,7 @@ void Application::CheckAssetsVersion() {
             return;
         }
     }
+#endif  // CONFIG_KITTY_LOCKDOWN
 
     // Apply assets
     assets.Apply();
@@ -1287,6 +1295,11 @@ void Application::Reboot() {
 }
 
 bool Application::UpgradeFirmware(const std::string& url, const std::string& version) {
+#ifdef CONFIG_KITTY_LOCKDOWN
+    // Refuse before touching audio or the display; Ota::Upgrade refuses too.
+    ESP_LOGW(TAG, "Firmware upgrade refused (lockdown)");
+    return false;
+#endif
     auto& board = Board::GetInstance();
     auto display = board.GetDisplay();
 

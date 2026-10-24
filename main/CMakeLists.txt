@@ -855,6 +855,11 @@ elseif(CONFIG_BOARD_TYPE_BREAD_COMPACT_WIFI_CAM)
     set(BUILTIN_TEXT_FONT font_noto_sans_basic_16_4)
     set(BUILTIN_ICON_FONT font_material_symbols_16_4)
     set(DEFAULT_EMOJI_COLLECTION noto-color-emoji_64)
+elseif(CONFIG_BOARD_TYPE_LAFVIN_S3_169_CAM)
+    set(BOARD_DIR "lafvin-s3-169-cam")
+    set(BUILTIN_TEXT_FONT font_noto_sans_basic_16_4)
+    set(BUILTIN_ICON_FONT font_material_symbols_16_4)
+    set(DEFAULT_EMOJI_COLLECTION kitty-gif)
 elseif(CONFIG_BOARD_TYPE_JIUCHUAN)
     set(BOARD_DIR "jiuchuan-s3")
     set(BUILTIN_TEXT_FONT font_noto_sans_basic_20_4)
@@ -927,6 +932,23 @@ endif()
 
 if(NOT BOARD_DIR AND NOT CMAKE_BUILD_EARLY_EXPANSION)
     message(FATAL_ERROR "The selected board does not define BOARD_DIR")
+endif()
+
+# Mission Kitty lockdown: refuse to build an image that could not reach the Mini, or that would
+# reach anything else. The key value is never printed.
+if(CONFIG_KITTY_LOCKDOWN AND NOT CMAKE_BUILD_EARLY_EXPANSION)
+    if("${CONFIG_KITTY_DEVICE_KEY}" STREQUAL "")
+        message(FATAL_ERROR
+            "KITTY_LOCKDOWN: CONFIG_KITTY_DEVICE_KEY is empty. "
+            "Run scripts/kitty-key.sh (writes the git-ignored sdkconfig.kitty.local) and rebuild.")
+    endif()
+    set(KITTY_EXPECTED_OTA_URL
+        "http://${CONFIG_KITTY_SERVER_HOST}:${CONFIG_KITTY_HTTP_PORT}/xiaozhi/ota/")
+    if(NOT "${CONFIG_OTA_URL}" STREQUAL "${KITTY_EXPECTED_OTA_URL}")
+        message(FATAL_ERROR
+            "KITTY_LOCKDOWN: CONFIG_OTA_URL is '${CONFIG_OTA_URL}', "
+            "expected '${KITTY_EXPECTED_OTA_URL}'")
+    endif()
 endif()
 
 set(BOARD_CONFIG_FILE "${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_DIR}/config.json")

@@ -141,7 +141,8 @@ void McpServer::AddUserOnlyTools() {
                         return true;
                     });
 
-    // Firmware upgrade
+#ifndef CONFIG_KITTY_LOCKDOWN
+    // Firmware upgrade (not registered under KITTY_LOCKDOWN: no over-the-air firmware)
     AddUserOnlyTool(
         "self.upgrade_firmware",
         "Upgrade firmware from a specific URL. This will download and install the firmware, then "
@@ -162,6 +163,7 @@ void McpServer::AddUserOnlyTools() {
 
             return true;
         });
+#endif  // CONFIG_KITTY_LOCKDOWN
 
     // Display control
 #ifdef HAVE_LVGL
@@ -314,8 +316,9 @@ void McpServer::AddUserOnlyTools() {
     }
 #endif  // HAVE_LVGL
 
+#ifndef CONFIG_KITTY_LOCKDOWN
     // Assets download url (always registered — Settings storage works regardless of partition
-    // layout)
+    // layout). Not registered under KITTY_LOCKDOWN: assets come only from the USB flash.
     AddUserOnlyTool("self.assets.set_download_url", "Set the download url for the assets",
                     PropertyList({Property("url", kPropertyTypeString)}),
                     [](const PropertyList& properties) -> ReturnValue {
@@ -324,6 +327,7 @@ void McpServer::AddUserOnlyTools() {
                         settings.SetString("download_url", url);
                         return true;
                     });
+#endif  // CONFIG_KITTY_LOCKDOWN
 }
 
 void McpServer::AddTool(std::unique_ptr<McpTool> tool) {
