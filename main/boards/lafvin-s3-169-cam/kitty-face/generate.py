@@ -10,8 +10,8 @@ the light and the dark theme.
     .venv/bin/python generate.py                       # writes ../kitty-gif/*.gif
     .venv/bin/python generate.py --sheet sheet.png     # also a 240x280 contact sheet
 
-The GIFs are 120x120, loop forever, and use full frames with disposal 2 (restore to background),
-which is the case the firmware's gifdec handles without ghosting.
+The GIFs are 200x200 (shown 1:1 on the 240x280 panel) and loop forever. They use full frames
+with disposal 2 (restore to background), which the firmware's gifdec handles without ghosting.
 """
 
 import argparse
@@ -21,7 +21,7 @@ from pathlib import Path
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
-SIZE = 120  # final GIF size (px); the Task 29 brief caps it at 120x120 (--size to try others)
+SIZE = 200  # final GIF size (px), sized to read on the 240x280 panel (--size to change)
 S = 4  # supersampling factor
 W = SIZE * S
 # All drawing coordinates below are in a 120x120 design space and scale with SIZE.
@@ -40,6 +40,7 @@ TEAR = (140, 210, 255)
 RED = (255, 92, 92)
 DIM = (150, 156, 214)
 WHITE = (255, 255, 255)
+QUESTION = (132, 98, 236)  # violet: reads on the light and the dark theme
 
 HEAD = (12, 34, 108, 106)  # x0, y0, x1, y1
 HEAD_R = 27
@@ -281,8 +282,8 @@ def zzz(d, ph):
 def question(d, ph):
     bob = 2.5 * math.sin(2 * math.pi * ph)
     x, y = 100, 16 + bob
-    stroke(d, arc_points(x, y, 5.5, 5, 190, 400, 20) + [(x, y + 8)], 3.2, OUTLINE)
-    ellipse(d, x, y + 13.5, 2.1, 2.1, OUTLINE)
+    stroke(d, arc_points(x, y, 5.5, 5, 190, 400, 20) + [(x, y + 8)], 3.4, QUESTION)
+    ellipse(d, x, y + 13.5, 2.3, 2.3, QUESTION)
 
 
 def thought_dots(d, ph):
@@ -715,7 +716,7 @@ def main():
     ap.add_argument("--sheet", type=Path, help="write a 240x280 contact sheet PNG here")
     ap.add_argument("--dark-sheet", type=Path, help="the same sheet on the dark theme")
     ap.add_argument("--only", nargs="*", help="render only these moods")
-    ap.add_argument("--size", type=int, default=SIZE, help="GIF size in px (default 120)")
+    ap.add_argument("--size", type=int, default=SIZE, help="GIF size in px (default 200)")
     args = ap.parse_args()
     SIZE, W = args.size, args.size * S
 

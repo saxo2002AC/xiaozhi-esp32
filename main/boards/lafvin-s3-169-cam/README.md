@@ -106,7 +106,23 @@ and `kitty-face/contact-sheet.png`.
 set:
 
 - `listening`: replaces "neutral" while the status is Listening;
-- `thinking`: shown once the child's words are recognized.
+- `thinking`: shown once the child's words are recognized, until the reply's emotion arrives. If
+  none arrives, the first spoken line switches it to `happy` (the talking face).
+
+The faces are 200x200 and play at 1:1.
+
+## Hold to talk: releasing before the channel opens
+
+A quick tap can release BOOT before the audio channel finishes opening. In one pass, the main loop
+handles START, then STOP, then the scheduled open, so STOP sees `Connecting`.
+`Application::stop_after_connect_` records that release, and `ContinueOpenAudioChannel` goes back to
+Idle instead of listening. Without this, the mic would stay on until the next press.
+
+`scripts/tests/test_kitty_ptt_race.py` runs the real handlers on the host. Manual check for Task 30:
+
+1. Tap BOOT once while idle and disconnected.
+2. The status must return to Standby, never Listening.
+3. No `listen start` may reach the server log.
 
 ## Flashing (Task 30, not here)
 

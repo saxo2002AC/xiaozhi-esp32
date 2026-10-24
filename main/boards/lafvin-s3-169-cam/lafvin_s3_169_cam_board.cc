@@ -26,7 +26,8 @@
 // Kitty face moods the core does not set, kept in the board so core code stays board-agnostic:
 // "listening" while BOOT is held (the core asks for "neutral" under the Listening status), and
 // "thinking" once the child's words are recognized (the stt "user" line) until the reply's
-// emotion arrives. Both faces are in kitty-gif.
+// emotion arrives. If no emotion arrives (the server's emoji feature is off), the first spoken
+// line switches to "happy" so the face never "thinks" through the whole reply.
 class KittyLcdDisplay : public SpiLcdDisplay {
 public:
     using SpiLcdDisplay::SpiLcdDisplay;
@@ -40,19 +41,28 @@ public:
         if (listening_ && emotion != nullptr && strcmp(emotion, "neutral") == 0) {
             emotion = "listening";
         }
+        awaiting_reply_emotion_ = false;  // any other face request replaces our "thinking"
         return SpiLcdDisplay::SetEmotion(emotion);
     }
 
     void SetChatMessage(const char* role, const char* content) override {
         SpiLcdDisplay::SetChatMessage(role, content);
-        if (role != nullptr && strcmp(role, "user") == 0 && content != nullptr &&
-            content[0] != '\0') {
+        if (role == nullptr || content == nullptr || content[0] == '\0') {
+            return;
+        }
+        if (strcmp(role, "user") == 0) {
             SetEmotion("thinking");
+            awaiting_reply_emotion_ = true;
+        } else if (strcmp(role, "assistant") == 0 && awaiting_reply_emotion_) {
+            // Kitty is speaking and no reply emotion came (the server's emoji feature is off):
+            // don't keep "thinking" through the reply. "happy" is the talking face.
+            SetEmotion("happy");
         }
     }
 
 private:
     std::atomic<bool> listening_{false};
+    std::atomic<bool> awaiting_reply_emotion_{false};
 };
 
 class LafvinS3169CamBoard : public WifiBoard {

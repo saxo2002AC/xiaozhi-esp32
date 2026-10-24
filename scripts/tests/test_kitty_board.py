@@ -156,8 +156,10 @@ class KittyFaceTests(unittest.TestCase):
                 self.assertTrue(path.is_file(), f"{path} is missing")
                 with Image.open(path) as im:
                     self.assertEqual(im.format, "GIF")
-                    self.assertLessEqual(im.size[0], 120)
-                    self.assertLessEqual(im.size[1], 120)
+                    # Fix round 1: 200 px (<= 200), so the face reads on the 240x280 panel.
+                    self.assertLessEqual(im.size[0], 200)
+                    self.assertLessEqual(im.size[1], 200)
+                    self.assertGreaterEqual(min(im.size), 180, "face too small to read")
                     self.assertGreater(getattr(im, "n_frames", 1), 1, "not animated")
                     self.assertEqual(im.info.get("loop"), 0, "must loop forever")
 
@@ -170,7 +172,8 @@ class KittyFaceTests(unittest.TestCase):
 
     def test_collection_size_budget(self):
         total = sum(p.stat().st_size for p in FACES.glob("*.gif"))
-        self.assertLess(total, 2 * 1024 * 1024, f"kitty-gif is {total} bytes")
+        # The wake build also packs mn7_en + fst (~2.7 MB) into the 8 MB assets partition.
+        self.assertLess(total, 4 * 1024 * 1024, f"kitty-gif is {total} bytes")
 
     def test_sources_record_reference_and_generator(self):
         text = (FACES / "SOURCES.md").read_text(encoding="utf-8")
@@ -191,6 +194,69 @@ class KittyFaceTests(unittest.TestCase):
         self.assertIn("Lang::Strings::LISTENING", src)
         app = (ROOT / "main/application.cc").read_text(encoding="utf-8")
         self.assertNotIn("CONFIG_BOARD_TYPE_LAFVIN_S3_169_CAM", app)
+
+    def test_board_display_moods_behave(self):
+        # Compile the real KittyLcdDisplay against a fake base and replay a conversation.
+        import os, shlex, shutil, subprocess, tempfile
+        compiler = shlex.split(os.environ.get("CXX", "c++"))
+        if not compiler or shutil.which(compiler[0]) is None:
+            self.skipTest("requires a host C++ compiler")
+        src = (BOARD / "lafvin_s3_169_cam_board.cc").read_text(encoding="utf-8")
+        start = src.index("class KittyLcdDisplay")
+        depth, end = 1, src.index("{", start) + 1
+        while depth:
+            depth += (src[end] == "{") - (src[end] == "}")
+            end += 1
+        end += 1  # the closing ';'
+        driver = r'''
+            #include <atomic>
+            #include <cstdio>
+            #include <cstring>
+            #include <string>
+            namespace Lang { namespace Strings {
+                constexpr const char* LISTENING = "Listening...";
+                constexpr const char* SPEAKING = "Speaking...";
+                constexpr const char* STANDBY = "Standby"; } }
+            struct SpiLcdDisplay {
+                std::string face;
+                virtual ~SpiLcdDisplay() = default;
+                virtual void SetStatus(const char*) {}
+                virtual bool SetEmotion(const char* e) { face = e; return true; }
+                virtual void SetChatMessage(const char*, const char*) {}
+            };
+            CLASS
+            static int fails = 0;
+            #define EXPECT(d, want, step) if ((d).face != want) { \
+                std::printf("FAIL %s: got %s want %s\n", step, (d).face.c_str(), want); fails++; }
+            int main() {
+                KittyLcdDisplay d;
+                d.SetStatus(Lang::Strings::STANDBY); d.SetEmotion("neutral"); EXPECT(d, "neutral", "idle");
+                d.SetStatus(Lang::Strings::LISTENING); d.SetEmotion("neutral"); EXPECT(d, "listening", "listen");
+                d.SetStatus(Lang::Strings::STANDBY); d.SetEmotion("neutral"); EXPECT(d, "neutral", "release");
+                d.SetChatMessage("user", "hi kitty"); EXPECT(d, "thinking", "stt");
+                d.SetStatus(Lang::Strings::SPEAKING); EXPECT(d, "thinking", "tts start");
+                // Emoji feature off: no llm emotion; the first spoken line ends "thinking".
+                d.SetChatMessage("assistant", "Hello!"); EXPECT(d, "happy", "reply without emotion");
+                d.SetChatMessage("assistant", "More."); EXPECT(d, "happy", "second line");
+                // Emoji feature on: the reply's emotion stays through the reply.
+                d.SetChatMessage("user", "tell me a joke"); EXPECT(d, "thinking", "stt 2");
+                d.SetEmotion("laughing"); d.SetChatMessage("assistant", "Ha!"); EXPECT(d, "laughing", "reply emotion kept");
+                // The reply's emotion may itself be "thinking": keep it.
+                d.SetChatMessage("user", "why?"); d.SetEmotion("thinking");
+                d.SetChatMessage("assistant", "Hmm."); EXPECT(d, "thinking", "llm thinking kept");
+                d.SetChatMessage("user", ""); EXPECT(d, "thinking", "empty user line ignored");
+                return fails ? 1 : 0;
+            }
+        '''.replace("CLASS", src[start:end])
+        with tempfile.TemporaryDirectory() as d:
+            cc = Path(d) / "kitty_display.cc"
+            cc.write_text(driver, encoding="utf-8")
+            exe = Path(d) / "kitty_display"
+            built = subprocess.run(compiler + ["-std=c++17", str(cc), "-o", str(exe)],
+                                   capture_output=True, text=True)
+            self.assertEqual(built.returncode, 0, built.stderr)
+            run = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
 
     def test_resolver_finds_kitty_gif(self):
         assets = _load("build_default_assets", ROOT / "scripts/build_default_assets.py")

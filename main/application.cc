@@ -841,6 +841,11 @@ void Application::HandleToggleChatEvent() {
 }
 
 void Application::ContinueOpenAudioChannel(ListeningMode mode) {
+    // A push-to-talk release handled before this scheduled open ran (same main-loop pass) must
+    // not leave the device listening once the channel opens. Read and clear it here.
+    const bool stop_after_connect = stop_after_connect_;
+    stop_after_connect_ = false;
+
     // Check state again in case it was changed during scheduling
     if (GetDeviceState() != kDeviceStateConnecting) {
         return;
@@ -859,6 +864,10 @@ void Application::ContinueOpenAudioChannel(ListeningMode mode) {
         }
     }
 
+    if (stop_after_connect) {
+        SetDeviceState(kDeviceStateIdle);
+        return;
+    }
     SetListeningMode(mode);
 }
 
@@ -886,6 +895,7 @@ void Application::HandleStartListeningEvent() {
 
     if (state == kDeviceStateIdle) {
         if (!protocol_->IsAudioChannelOpened()) {
+            stop_after_connect_ = false;
             SetDeviceState(kDeviceStateConnecting);
             // Schedule to let the state change be processed first (UI update)
             Schedule([this]() { ContinueOpenAudioChannel(kListeningModeManualStop); });
@@ -895,6 +905,9 @@ void Application::HandleStartListeningEvent() {
     } else if (state == kDeviceStateSpeaking) {
         AbortSpeaking(kAbortReasonNone);
         SetListeningMode(kListeningModeManualStop);
+    } else if (state == kDeviceStateConnecting) {
+        // Pressed again before the open ran: the button is held, so listen after all.
+        stop_after_connect_ = false;
     }
 }
 
@@ -912,6 +925,9 @@ void Application::HandleStopListeningEvent() {
             protocol_->SendStopListening();
         }
         SetDeviceState(kDeviceStateIdle);
+    } else if (state == kDeviceStateConnecting) {
+        // Released before the channel opened (a quick tap): go idle once it opens.
+        stop_after_connect_ = true;
     }
 }
 

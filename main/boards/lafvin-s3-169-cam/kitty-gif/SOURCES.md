@@ -24,8 +24,10 @@ The generator is deterministic: two runs give byte-identical GIFs.
 
 ## Format
 
-- 22 GIFs, 120x120 px each (the task brief caps them at 120x120). They are shown centred on the
-  240x280 panel, between the status bar and the chat line.
+- 22 GIFs, 200x200 px each. They are shown 1:1 and centred on the 240x280 panel, between the
+  status bar and the chat line. The first version was 120x120, which read too small on the panel.
+  A 200x200 GIF needs about 200 KB of LVGL heap while it plays (the ARGB canvas plus the index
+  frame). The pool is `CONFIG_LV_MEM_SIZE_KILOBYTES=1024`, and only one face plays at a time.
 - They loop forever. Every open-eyed face blinks in its loop.
 - Each GIF has one 255-colour palette plus a transparent index. A thin white sticker edge keeps
   the 1-bit transparency clean on both the light and the dark theme.
@@ -33,7 +35,8 @@ The generator is deterministic: two runs give byte-identical GIFs.
   `main/display/lvgl_display/gif/gifdec.c` decodes this with no ghosting. That was checked
   frame by frame against the rendered art, over two loops, with `LV_GIF_CACHE_DECODE_DATA` both
   on and off.
-- Total is about 0.95 MB, well inside the 8 MB `assets` partition.
+- Total is about 1.7 MB. The 8 MB `assets` partition holds 2.6 MB with push to talk and 5.3 MB with
+  the wake build's mn7_en model.
 
 ## Names
 
@@ -45,7 +48,8 @@ The board itself sets two of the faces (see `KittyLcdDisplay` in `../lafvin_s3_1
 
 - `listening` (an extra face, not a server emotion): shown while BOOT is held.
 - `thinking`: shown from the moment the child's words are recognized until the reply's emotion
-  arrives.
+  arrives. If no emotion arrives (the server's emoji feature is off), the first spoken line
+  switches it to `happy`, so Kitty never "thinks" through a whole reply.
 
 `happy` is the server's default reply emotion, so its mouth moves as if talking: it doubles as the
 speaking face. `confused` is also the "I can't see" face.
