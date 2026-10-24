@@ -37,8 +37,9 @@ menuconfig or a fragment. With it:
 - CMake fails if `CONFIG_KITTY_DEVICE_KEY` is empty or `CONFIG_OTA_URL` is not
   `http://<KITTY_SERVER_HOST>:<KITTY_HTTP_PORT>/xiaozhi/ota/`.
 
-`KITTY_SERVER_HOST` is fixed at `192.168.0.11`. `KITTY_HTTP_PORT` is `8003` until Task 26 allocates
-the real port; change `CONFIG_KITTY_HTTP_PORT` and `CONFIG_OTA_URL` together in `config.json`.
+`KITTY_SERVER_HOST` is fixed at `192.168.0.11`. `KITTY_HTTP_PORT` is `3030` (the deployed server's
+HTTP port; its websocket is on 3029 and arrives in the OTA reply). Change `CONFIG_KITTY_HTTP_PORT`
+and `CONFIG_OTA_URL` together in `config.json`.
 
 ## Device key
 
