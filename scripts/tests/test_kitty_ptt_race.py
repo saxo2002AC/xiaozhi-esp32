@@ -32,6 +32,7 @@ DRIVER = r'''
 #include <cstdio>
 #include <functional>
 #include <memory>
+#include <string>
 #include <vector>
 #include "DEVICE_STATE_H"
 
@@ -40,6 +41,7 @@ enum AbortReason { kAbortReasonNone };
 enum class PowerSaveLevel { PERFORMANCE };
 #define TAG "test"
 #define ESP_LOGE(tag, ...) std::fprintf(stderr, __VA_ARGS__)
+#define ESP_LOGI(tag, ...) do {} while (0)
 
 struct Board {
     static Board& GetInstance() { static Board b; return b; }
@@ -51,8 +53,13 @@ struct FakeProtocol {
     bool IsAudioChannelOpened() const { return opened; }
     bool OpenAudioChannel() { opened = open_ok; return open_ok; }
     void SendStopListening() { stop_sent++; }
+    void CloseAudioChannel() { opened = false; }
 };
-struct FakeAudio { void EnableAudioTesting(bool) {} };
+struct FakeAudio {
+    void EnableAudioTesting(bool) {}
+    void EncodeWakeWord() {}
+    void EnableWakeWordDetection(bool) {}
+};
 
 class Application {
 public:
@@ -63,18 +70,25 @@ public:
     std::vector<std::function<void()>> tasks_;
     int listening_entered = 0;
     bool stop_after_connect_ = false;
+    bool play_popup_on_listening_ = false;
 
     DeviceState GetDeviceState() const { return state_; }
-    void SetDeviceState(DeviceState s) { state_ = s; if (s == kDeviceStateListening) listening_entered++; }
+    bool SetDeviceState(DeviceState s) { state_ = s; if (s == kDeviceStateListening) listening_entered++; return true; }
     void StopNotification() {}
     void AbortSpeaking(AbortReason) {}
     void Schedule(std::function<void()>&& f) { tasks_.push_back(std::move(f)); }
     void SetListeningMode(ListeningMode mode) { listening_mode_ = mode; SetDeviceState(kDeviceStateListening); }
+    ListeningMode GetDefaultListeningMode() const { return kListeningModeAutoStop; }
     void RunTasks() { auto t = std::move(tasks_); tasks_.clear(); for (auto& f : t) f(); }
+    // The session ends and the server closes the channel: back to idle, channel closed.
+    void EndSession() { state_ = kDeviceStateIdle; protocol_->opened = false; }
 
+    void HandleToggleChatEvent();
     void HandleStartListeningEvent();
     void HandleStopListeningEvent();
     void ContinueOpenAudioChannel(ListeningMode mode);
+    void BeginWakeWordInvoke(const std::string& wake_word);
+    void ContinueWakeWordInvoke(const std::string& wake_word);
 };
 
 METHODS
@@ -121,6 +135,35 @@ int main() {
         app.RunTasks();
         CHECK(app.state_ == kDeviceStateListening, "after failed open: next hold listens");
     }
+    {   // BOOT released while a wake-word connect is opening: the wake path must consume the
+        // flag, or it lingers and ends the next toggle-started session idle.
+        Application app;
+        app.BeginWakeWordInvoke("hey kitty");
+        app.HandleStopListeningEvent();
+        app.RunTasks();
+        CHECK(app.state_ == kDeviceStateListening, "wake connect: listening");
+        CHECK(!app.stop_after_connect_, "wake connect: flag cleared");
+        app.EndSession();
+        app.HandleToggleChatEvent();
+        app.RunTasks();
+        CHECK(app.state_ == kDeviceStateListening, "toggle after wake: listening");
+    }
+    {   // The toggle path never inherits a stale flag, whatever left it set.
+        Application app;
+        app.stop_after_connect_ = true;
+        app.HandleToggleChatEvent();
+        app.RunTasks();
+        CHECK(app.state_ == kDeviceStateListening, "toggle with stale flag: listening");
+        CHECK(!app.stop_after_connect_, "toggle with stale flag: flag cleared");
+    }
+    {   // Same for a wake-word connect over an already open channel (no scheduling).
+        Application app;
+        app.protocol_->opened = true;
+        app.stop_after_connect_ = true;
+        app.BeginWakeWordInvoke("hey kitty");
+        CHECK(app.state_ == kDeviceStateListening, "wake on open channel: listening");
+        CHECK(!app.stop_after_connect_, "wake on open channel: flag cleared");
+    }
     return failures ? 1 : 0;
 }
 '''
@@ -134,9 +177,12 @@ class PushToTalkRaceTests(unittest.TestCase):
         src = (ROOT / "main/application.cc").read_text(encoding="utf-8")
         methods = "\n\n".join(
             definition(src, sig) for sig in (
+                "void Application::HandleToggleChatEvent()",
                 "void Application::HandleStartListeningEvent()",
                 "void Application::HandleStopListeningEvent()",
                 "void Application::ContinueOpenAudioChannel(ListeningMode mode)",
+                "void Application::BeginWakeWordInvoke(const std::string& wake_word)",
+                "void Application::ContinueWakeWordInvoke(const std::string& wake_word)",
             )
         )
         driver = DRIVER.replace("METHODS", methods).replace(

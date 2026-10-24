@@ -827,6 +827,8 @@ void Application::HandleToggleChatEvent() {
     if (state == kDeviceStateIdle) {
         ListeningMode mode = GetDefaultListeningMode();
         if (!protocol_->IsAudioChannelOpened()) {
+            // A toggle is not a push-to-talk hold: no earlier release may cancel this open.
+            stop_after_connect_ = false;
             SetDeviceState(kDeviceStateConnecting);
             // Schedule to let the state change be processed first (UI update)
             Schedule([this, mode]() { ContinueOpenAudioChannel(mode); });
@@ -993,6 +995,10 @@ void Application::BeginWakeWordInvoke(const std::string& wake_word) {
 }
 
 void Application::ContinueWakeWordInvoke(const std::string& wake_word) {
+    // A BOOT release during this connect set the push-to-talk flag; the wake word, not the
+    // button, started this session, so consume the flag here or it would end a later session.
+    stop_after_connect_ = false;
+
     // Check state again in case it was changed during scheduling
     if (GetDeviceState() != kDeviceStateConnecting) {
         return;
